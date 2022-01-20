@@ -39,6 +39,10 @@ static int luaf_customLoad(lua_State *l) {
     // push back the name?
     char filename[256];
     sprintf(filename, "%s.lua", name);
+
+    lua_getfield(l, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    lua_getfield(l, 2, name);
+
     int state = luaL_loadfile(l, filename);
 
     bool loaded = true;
@@ -54,17 +58,29 @@ static int luaf_customLoad(lua_State *l) {
             printf("Error running module [%s]: %s\n", name, lua_tostring(l, -1));
             lua_pop(l, 1);
             loaded = false;
+        } else {
+            
+
+            // check if it's a returning value module
+            int idx = lua_gettop(l);
+            printf("Stack top: %d\n", idx);
+            if (!lua_isnil(l, -1)) {
+                printf("CUSTOM_LOADER: module[%s] RETURNING VALUE of type[%s]! store it!\n", name, lua_typename(l, lua_type(l, -1)));
+                // does it work?
+                // push loaded[name] to stack
+                lua_setfield(l, 2, name);
+            } else {
+                printf("CUSTOM_LOADER: module[%s] doesn\'t return value!\n", name);
+                // add module name to loaded?                
+                // lua_pushstring(l, name);
+                lua_pushboolean(l, 1);
+                lua_setfield(l, 2, name);
+            }
         }
     }
 
     if (loaded) {
         printf("CUSTOM_LOADER: loaded module[%s]\n", name);
-
-        // add module name to loaded?
-        lua_getfield(l, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
-        lua_pushstring(l, name);
-        lua_pushboolean(l, 1);
-        lua_settable(l, -3);
         // lua_pop(l, 1); // remove getfields?
     }
 
