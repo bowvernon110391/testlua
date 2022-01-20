@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <unistd.h>
 #include <string>
 
 #ifdef __cplusplus
@@ -26,6 +27,15 @@ static int luaf_customLoad(lua_State *l) {
     const char* name = luaL_checkstring(l, 1);
     printf("CUSTOM_LOADER: loading module [%s]\n", name);
 
+    // check if it's already loaded
+    lua_getfield(l, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    lua_getfield(l, -2, name);
+    if (lua_toboolean(l, -1)) {
+        printf("CUSTOM_LOADER: module [%s] already loaded.\n", name);
+        return 1;
+    }
+    lua_pop(l, 1); // remove getfields?
+
     // push back the name?
     char filename[256];
     sprintf(filename, "%s.lua", name);
@@ -49,6 +59,13 @@ static int luaf_customLoad(lua_State *l) {
 
     if (loaded) {
         printf("CUSTOM_LOADER: loaded module[%s]\n", name);
+
+        // add module name to loaded?
+        lua_getfield(l, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+        lua_pushstring(l, name);
+        lua_pushboolean(l, 1);
+        lua_settable(l, -3);
+        // lua_pop(l, 1); // remove getfields?
     }
 
     return 1;
@@ -77,6 +94,10 @@ int main(int argc, char** argv) {
         printf("USAGE: test [luafile]\n");
         return 0;
     }
+
+    char tmp[256];
+    getcwd(tmp, 256);
+    printf("Running from (%s)\n", tmp);
 
     // do the real shit
     lua_State *l = luaL_newstate();
