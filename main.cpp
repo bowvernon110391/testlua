@@ -31,16 +31,24 @@ static int luaf_customLoad(lua_State *l) {
     sprintf(filename, "%s.lua", name);
     int state = luaL_loadfile(l, filename);
 
+    bool loaded = true;
+
     if (state) {
         printf("error loading module [%s]: %s\n", name, lua_tostring(l, -1));
         lua_pop(l, 1);
+        loaded = false;
     } else {
         // call it?
         state = lua_pcall(l, 0, LUA_MULTRET, 0);
         if (state) {
             printf("Error running module [%s]: %s\n", name, lua_tostring(l, -1));
             lua_pop(l, 1);
+            loaded = false;
         }
+    }
+
+    if (loaded) {
+        printf("CUSTOM_LOADER: loaded module[%s]\n", name);
     }
 
     return 1;
@@ -55,7 +63,7 @@ static luaL_Reg funcs[] = {
 }
 #endif
 
-// add our loader
+// add our loader (basically replace the lua require loader)
 static void reg_loader(lua_State *l) {
     lua_pushglobaltable(l);
     lua_pushvalue(l, -2);
