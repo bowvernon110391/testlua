@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <unistd.h>
 #include <string>
 
 #ifdef __cplusplus
@@ -186,10 +185,6 @@ int main(int argc, char** argv) {
         printf("USAGE: test [luafile]\n");
         return 0;
     }
-
-    char tmp[256];
-    getcwd(tmp, 256);
-    printf("Running from (%s)\n", tmp);
 
     // do the real shit
     lua_State *l = luaL_newstate();

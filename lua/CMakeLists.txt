@@ -3,6 +3,8 @@
 
 file(GLOB LUA_SRC ./*.c)
 
+list(FILTER LUA_SRC EXCLUDE REGEX "luac.c")
+
 add_library(lua
     ${LUA_SRC}
 )
