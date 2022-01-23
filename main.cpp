@@ -21,70 +21,125 @@ static int luaf_getAreaSize(lua_State* l) {
     return 1;
 }
 
+static bool testLoaded(lua_State *l, const char* name);
+
 // our custom loader. for now, just return error
 static int luaf_customLoad(lua_State *l) {
-    printf("CUSTOM_LOADER loading...\n");
-    const char* name = luaL_checkstring(l, 1);
-    printf("CUSTOM_LOADER: loading module [%s]\n", name);
+    if (!lua_gettop(l)) {
+        printf("CL: no argument for loader.\n");
+    }
 
-    // check if it's already loaded
-    lua_getfield(l, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
-    lua_getfield(l, -2, name);
-    if (lua_toboolean(l, -1)) {
-        printf("CUSTOM_LOADER: module [%s] already loaded.\n", name);
+    if (!lua_isstring(l, -1)) {
+        printf("CL: non string argument provided for loader.\n");
+    }
+
+    const char* name = lua_tostring(l, -1);
+    lua_pop(l, 1);
+
+    // check if loaded
+    if (testLoaded(l, name)) {
+        printf("CL: module[ %s ] already loaded\n", name);
+        // then just load em
+        lua_getfield(l, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+        lua_getfield(l, -1, name);
+        lua_rotate(l, -2, -1);
+        lua_pop(l, 1);
         return 1;
     }
-    lua_pop(l, 1); // remove getfields?
 
-    // push back the name?
-    char filename[256];
-    sprintf(filename, "%s.lua", name);
+    printf("CL: load -> %s\n", name);
 
-    lua_getfield(l, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
-    lua_getfield(l, 2, name);
+    char buffer[256];
+    sprintf(buffer, "%s.lua", name);
 
-    int state = luaL_loadfile(l, filename);
-
-    bool loaded = true;
-
-    if (state) {
-        printf("error loading module [%s]: %s\n", name, lua_tostring(l, -1));
+    if (luaL_loadfile(l, buffer)) {
+        printf("CL: error loading [%s] -> %s\n", buffer, lua_tostring(l, -1));
         lua_pop(l, 1);
-        loaded = false;
-    } else {
-        // call it?
-        state = lua_pcall(l, 0, LUA_MULTRET, 0);
-        if (state) {
-            printf("Error running module [%s]: %s\n", name, lua_tostring(l, -1));
-            lua_pop(l, 1);
-            loaded = false;
-        } else {
-            
+        return 0;
+    }
 
-            // check if it's a returning value module
-            int idx = lua_gettop(l);
-            printf("Stack top: %d\n", idx);
-            if (!lua_isnil(l, -1)) {
-                printf("CUSTOM_LOADER: module[%s] RETURNING VALUE of type[%s]! store it!\n", name, lua_typename(l, lua_type(l, -1)));
-                // does it work?
-                // push loaded[name] to stack
-                lua_setfield(l, 2, name);
-            } else {
-                printf("CUSTOM_LOADER: module[%s] doesn\'t return value!\n", name);
-                // add module name to loaded?                
-                // lua_pushstring(l, name);
-                lua_pushboolean(l, 1);
-                lua_setfield(l, 2, name);
-            }
+    // it's loaded?
+    // then the function (loader) will be at the top. check em?
+    const void* loader = lua_topointer(l, -1);
+    printf("CL: loader at (0x%p), ready to be called.\n", loader);
+
+    if (lua_pcall(l, 0, LUA_MULTRET, 0)) {
+        printf("CL: loader failed -> %s\n", lua_tostring(l, -1));
+        lua_pop(l, 1);
+    }
+
+    // do what now?
+    // compute stack?
+    int stackSize = lua_gettop(l);
+    printf("CL: stack after loader -> %d\n", stackSize);
+
+    if (stackSize) {
+        const char* retType = lua_typename(l, lua_type(l, -1));
+        const void* ptr = lua_topointer(l, -1);
+        printf("CL: loader return %s at (0x%p)\n", retType, ptr);
+
+        // store it?
+        lua_getfield(l, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+        // lua_getfield(l, -1, name);
+        lua_pushstring(l, name);
+
+        // check stack size
+        printf("CL: ready to store, since we have %d at stack\n", lua_gettop(l));
+        printf("-- stack contents (PRE-ROTATION) [ \n");
+        for (int i=0; i<lua_gettop(l); i++) {
+            int idx = -1 - i;
+            printf("\t%s\n", lua_typename(l, lua_type(l, idx)));
         }
+        printf(" ]\n");
+
+        // rotate it
+        lua_rotate(l, -3, -1);
+
+        printf("-- stack contents (POST-ROTATION) [ \n");
+        for (int i=0; i<lua_gettop(l); i++) {
+            int idx = -1 - i;
+            printf("\t%s\n", lua_typename(l, lua_type(l, idx)));
+        }
+        printf(" ]\n");
+
+        // just call settable now
+        lua_settable(l, -3);
+
+        printf("-- stack size after settable -> %d\n", lua_gettop(l));
+
+        // after this, the key and value are popped, leaving the table at top of the stack
+        // reload the table from registry instead!
+        lua_pop(l, 1);  // clear stack
+        // reload
+        lua_getfield(l, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+        lua_getfield(l, -1, name);
+        lua_rotate(l, -2, -1);
+        lua_pop(l, 1);
+
+        return 1;
+    } else {
+        printf("CL: Loader doesn't return anything\n");
+        printf("-- stack contents (PRE-ASSIGNMENT) [ \n");
+        for (int i=0; i<lua_gettop(l); i++) {
+            int idx = -1 - i;
+            printf("\t%s\n", lua_typename(l, lua_type(l, idx)));
+        }
+        printf(" ]\n");
+
+        // push boolean and set
+        lua_getfield(l, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+        lua_pushstring(l, name);
+        lua_pushboolean(l, true);
+
+        lua_settable(l, -3);
+        lua_pop(l, 1);
+
+        lua_pushboolean(l, true);
+        return 1;   // push 1 value to stack?
     }
 
-    if (loaded) {
-        printf("CUSTOM_LOADER: loaded module[%s]\n", name);
-        // lua_pop(l, 1); // remove getfields?
-    }
-
-    return 1;
+    lua_settop(l, 0);
+    return 0;
 }
 
 static luaL_Reg funcs[] = {
@@ -102,6 +157,27 @@ static void reg_loader(lua_State *l) {
     lua_pushvalue(l, -2);
     luaL_setfuncs(l, funcs, 1);
     lua_pop(l, 1);
+}
+
+static bool testLoaded(lua_State *l, const char* name) {
+    printf("before getfield: %d\n", lua_gettop(l));
+    // test read?
+    lua_getfield(l, LUA_REGISTRYINDEX, LUA_LOADED_TABLE);
+    printf("after first: %d\n", lua_gettop(l));
+    // push string?
+    lua_getfield(l, -1, name);
+    printf("after second: %d\n", lua_gettop(l));
+
+    // let's read it?
+    const void* ptr = lua_topointer(l, -1);
+    int type = lua_type(l, -1);
+    printf("Top stack type: %s at 0x%p\n", lua_typename(l, type), ptr);
+    // grab ptr
+
+    // lua_settop(l, 0);
+    lua_pop(l, 2);
+
+    return type != LUA_TNIL;
 }
 
 int main(int argc, char** argv) {
@@ -122,34 +198,29 @@ int main(int argc, char** argv) {
 
     // register our custom preload fn?
     reg_loader(l);
+    // testLoaded(l, "module/common");
 
     printf("loading [%s]\n", argv[1]);
     if (luaL_loadfile(l, argv[1])) {
         printf("Error loading [%s]: %s\n", argv[1], lua_tostring(l, -1));
         lua_pop(l, 1);
     } else {
-        // push variable
-        lua_pushnumber(l, 23);
-        lua_setglobal(l, "CLICK_MULTIPLIER");
+        // name it
+        printf("Loaded %s to stack id %d\n", argv[1], lua_gettop(l));
+        lua_setglobal(l, argv[1]);
 
-        // push function
-        lua_pushcfunction(l, luaf_getAreaSize);
-        lua_setglobal(l, "getAreaSize");
-
-        // run it
-        if (lua_pcall(l, 0, LUA_MULTRET, 0)) {
-            printf("Error running [%s]: %s\n", argv[1], lua_tostring(l, -1));
-            lua_pop(l, 1);
+        // run it several times
+        for (int i=0; i<3; i++) {
+            lua_getglobal(l, argv[1]);
+            if (lua_pcall(l, 0, LUA_MULTRET, 0)) {
+                printf("Error running [%s]: %s\n", argv[1], lua_tostring(l, -1));
+                lua_pop(l, 1);
+            }
         }
     }
 
-    // read lua variable
-    lua_getglobal(l, "click_count");
-    int click_count = (int) lua_tonumber(l, -1);
-    lua_pop(l, 1);
-
-    printf("the [click_count] value is %d\n", click_count);
-
+    // testLoaded(l, "module/common");
+   
     lua_close(l);
 
     return 0;
