@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <string>
 
+#define PI 3.1415923
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -8,15 +10,42 @@ extern "C" {
 #include <lualib.h>
 #include <lauxlib.h>
 
-static int luaf_getAreaSize(lua_State* l) {
+static int larea_rectangle(lua_State* l) {
     double width = luaL_checknumber(l, 1);
     double height = luaL_checknumber(l, 2);
 
     double area = width * height;
-
-    printf("CPP: called getAreaSize() with param (%f, %f)\n", (float)width, (float)height);
-
     lua_pushnumber(l, area);
+    return 1;
+}
+
+static int larea_square(lua_State* l) {
+    double s = luaL_checknumber(l, 1);
+    lua_pushnumber(l, s*s);
+    return 1;
+}
+
+static int larea_circle(lua_State* l) {
+    double s = luaL_checknumber(l, 1);
+    lua_pushnumber(l, PI * s * s);
+    return 1;
+}
+
+static luaL_Reg area_funcs[] = {
+    {"square", larea_square},
+    {"rectangle", larea_rectangle},
+    {"circle", larea_circle},
+    {NULL, NULL}
+};
+
+static int luaopen_area(lua_State* l) {
+    luaL_newlib(l, area_funcs);
+
+    // register some constants?
+    lua_pushstring(l, "PI");
+    lua_pushnumber(l, PI);
+    lua_rawset(l, -3);
+
     return 1;
 }
 
@@ -158,6 +187,11 @@ static void reg_loader(lua_State *l) {
     lua_pop(l, 1);
 }
 
+static void reg_customLibs(lua_State *l) {
+    luaL_requiref(l, "area", luaopen_area, 1);
+    lua_pop(l, 1);
+}
+
 static bool testLoaded(lua_State *l, const char* name) {
     printf("before getfield: %d\n", lua_gettop(l));
     // test read?
@@ -190,10 +224,11 @@ int main(int argc, char** argv) {
     lua_State *l = luaL_newstate();
 
     luaL_openlibs(l);
+    // register our custom libs
+    reg_customLibs(l);
 
     // register our custom preload fn?
     reg_loader(l);
-    // testLoaded(l, "module/common");
 
     printf("loading [%s]\n", argv[1]);
     if (luaL_loadfile(l, argv[1])) {
@@ -205,7 +240,7 @@ int main(int argc, char** argv) {
         lua_setglobal(l, argv[1]);
 
         // run it several times
-        for (int i=0; i<3; i++) {
+        for (int i=0; i<1; i++) {
             lua_getglobal(l, argv[1]);
             if (lua_pcall(l, 0, LUA_MULTRET, 0)) {
                 printf("Error running [%s]: %s\n", argv[1], lua_tostring(l, -1));
