@@ -1,14 +1,10 @@
 #include <stdio.h>
 #include <string>
 
+#include "lua.hpp"
+
 #define PI 3.1415923
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-#include <lua.h>
-#include <lualib.h>
-#include <lauxlib.h>
 
 static int larea_rectangle(lua_State* l) {
     double width = luaL_checknumber(l, 1);
@@ -175,10 +171,6 @@ static luaL_Reg funcs[] = {
     { NULL, NULL }
 };
 
-#ifdef __cplusplus
-}
-#endif
-
 // add our loader (basically replace the lua require loader)
 static void reg_loader(lua_State *l) {
     lua_pushglobaltable(l);
@@ -213,7 +205,21 @@ static bool testLoaded(lua_State *l, const char* name) {
     return type != LUA_TNIL;
 }
 
+static bool isLoadedAsTable(lua_State* l, const char* fname) {
+    // gotta check if it's loaded first
+    lua_getglobal(l, fname);
+    int t = lua_type(l, -1);
+    lua_pop(l, 1);
+
+    return t == LUA_TTABLE;
+}
+
 static bool loadLuaAsTable(lua_State* l, const char* fname) {
+    if (isLoadedAsTable(l, fname)) {
+        printf("[%s] already loaded as table.\n", fname);
+        return true;
+    }
+
     // gotta grab the file?
     if (luaL_dofile(l, fname)) {
         printf("Error loading lua file [%s] : %s\n", fname, lua_tostring(l, 1));
@@ -249,6 +255,7 @@ int main(int argc, char** argv) {
     reg_loader(l);
 
     // test our custom loader
+    loadLuaAsTable(l, "ai_kobold.lua");
     loadLuaAsTable(l, "ai_kobold.lua");
 
     printf("loading [%s]\n", argv[1]);
