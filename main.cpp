@@ -213,6 +213,24 @@ static bool testLoaded(lua_State *l, const char* name) {
     return type != LUA_TNIL;
 }
 
+static bool loadLuaAsTable(lua_State* l, const char* fname) {
+    // gotta grab the file?
+    if (luaL_dofile(l, fname)) {
+        printf("Error loading lua file [%s] : %s\n", fname, lua_tostring(l, 1));
+        lua_pop(l, 1);
+        return false;
+    }
+    // now it's loaded, and top of the stack is the table. gotta give it name?
+    if (lua_type(l, -1) != LUA_TTABLE) {
+        printf("Failed loading lua file as table [%s] : Non table returned (%s)\n", fname, lua_typename(l, lua_type(l, -1)));
+        return false;
+    }
+
+    // set name
+    lua_setglobal(l, fname);
+    return true;
+}
+
 int main(int argc, char** argv) {
 
     if (argc < 2) {
@@ -229,6 +247,9 @@ int main(int argc, char** argv) {
 
     // register our custom preload fn?
     reg_loader(l);
+
+    // test our custom loader
+    loadLuaAsTable(l, "ai_kobold.lua");
 
     printf("loading [%s]\n", argv[1]);
     if (luaL_loadfile(l, argv[1])) {
@@ -248,6 +269,24 @@ int main(int argc, char** argv) {
             }
         }
     }
+
+    // test our loaded module?
+    lua_getglobal(l, "ai_kobold.lua");
+    lua_getfield(l, -1, "onInit");
+
+    // now push one variable, self
+    int x = 0;
+    lua_pushlightuserdata(l, &x);
+    if (lua_pcall(l, 1, 0, 0)) {
+        printf("Error calling module's fn! %s\n", lua_tostring(l, 1));
+        lua_pop(l, 1);
+    }
+
+    // how many after call?
+    int stackSize = lua_gettop(l);
+    printf("After calling module: %d, the top type: %s\n", stackSize, lua_typename(l, lua_type(l, -1)));
+    lua_pop(l, stackSize);
+    
 
     // testLoaded(l, "module/common");
    
